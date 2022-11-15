@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -48,11 +49,17 @@ var (
 	signals = []os.Signal{syscall.SIGINT, syscall.SIGTERM}
 
 	// Signal channel
-	quit = make(chan os.Signal, 1)
+	quit chan os.Signal = nil
+
+	// Global lock (prevents simultaneous use in goroutines)
+	gl = sync.Mutex{}
 )
 
 // Run manages single execution of a process
 func Run(impl ManagedProcess) error {
+	gl.Lock()
+	defer gl.Unlock()
+
 	// Main context to receive OS signals
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -87,6 +94,9 @@ func Run(impl ManagedProcess) error {
 
 // RunWorker manages looped execution of a process
 func RunWorker(impl ManagedWorkerProcess) error {
+	gl.Lock()
+	defer gl.Unlock()
+
 	// Main context to receive OS signals
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -134,13 +144,20 @@ LOOP: // Labelled loop to allow break inside select
 	return nil
 }
 
+// SetSignals allows the monitored signals to be changed before running
+func SetSignals(sigs []os.Signal) {
+	signals = sigs
+}
+
 // Init if implemented
 func procInit(ctx context.Context, impl ManagedProcess) error {
 	if implWithInit, ok := impl.(ManagedProcessWithInit); ok {
-		// Create wrapped context with start timeout
+		// Create wrapped context with init timeout
+		// First signal during init will cancel init and exit process
 		initCtx, cancelInit := context.WithTimeout(ctx, implWithInit.GetInitTimeout())
 		defer cancelInit()
 
+		// Run init
 		if err := implWithInit.Init(initCtx); err != nil {
 			return fmt.Errorf("mproc: failed init - %w", err)
 		}
@@ -148,18 +165,16 @@ func procInit(ctx context.Context, impl ManagedProcess) error {
 	return nil
 }
 
-// SetSignals allows the monitored signals to be changed before running
-func SetSignals(sigs []os.Signal) {
-	signals = sigs
-}
-
 // Cleanup if implemented
 func procCleanup(impl ManagedProcess) error {
 	if implWithCleanup, ok := impl.(ManagedProcessWithCleanup); ok {
-		// Create wrapped context with start timeout
+		// Create fresh context with cleanup timeout
+		// First signal during cleanup will be caught and ignored as the process will exit shortly
+		// Further signals will have their default behaviour
 		ctx, cancel := context.WithTimeout(context.Background(), implWithCleanup.GetCleanupTimeout())
 		defer cancel()
 
+		// Run cleanup
 		if err := implWithCleanup.Cleanup(ctx); err != nil {
 			return fmt.Errorf("mproc: failed cleanup - %w", err)
 		}
@@ -170,6 +185,7 @@ func procCleanup(impl ManagedProcess) error {
 // Shared code for watching OS signals, intended to be executed in a goroutine
 func catchSignals(cancel context.CancelFunc, impl interface{}) {
 	defer cancel()
+	quit = make(chan os.Signal, 1)
 	signal.Notify(quit, signals...)
 	sig := <-quit
 	signal.Stop(quit) // Allow user to terminate if stuck

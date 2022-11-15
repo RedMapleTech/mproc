@@ -2,6 +2,9 @@
 
 This is a simple, dependency-free process wrapper to handle OS signals during process init, run (including looped), and cleanup stages.
 
+Only one process can be run at a time using this wrapper.
+It cannot be used inside parallel goroutines, instead the parallel goroutines should be executed inside the Run handler with the provided context.
+
 ## Prerequisites
 
 ```bash
