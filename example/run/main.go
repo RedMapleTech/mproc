@@ -20,21 +20,21 @@ func main() {
 }
 
 func (w *RunExample) Init(ctx context.Context) error {
-	log.Println("Init for 1 second...")
+	log.Println("Init...")
 	err := common.SleepCtx(ctx, 1*time.Second)
 	log.Println("Init complete")
 	return err
 }
 
 func (w *RunExample) Run(ctx context.Context) error {
-	log.Println("Running for 5 seconds...")
+	log.Println("Running...")
 	err := common.SleepCtx(ctx, 5*time.Second)
 	log.Println("Run complete")
 	return err
 }
 
 func (w *RunExample) Cleanup(ctx context.Context) error {
-	log.Println("Cleanup for 1 second...")
+	log.Println("Cleanup...")
 	err := common.SleepCtx(ctx, 1*time.Second)
 	log.Println("Cleanup complete")
 	return err

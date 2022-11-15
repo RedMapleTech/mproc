@@ -15,14 +15,20 @@ type ManagedProcess interface {
 	Run(ctx context.Context) error
 }
 
-// Optional OnSignal callback
-type ManagedProcessWithOnSignal interface {
-	OnSignal(signal os.Signal)
-}
-
 // Optional Run stage timeout
 type ManagedProcessWithRunTimeout interface {
 	GetRunTimeout() time.Duration
+}
+
+// Worker equivalent, as RunTimeout is not optional
+type ManagedWorkerProcess interface {
+	ManagedProcess
+	ManagedProcessWithRunTimeout
+}
+
+// Optional OnSignal callback
+type ManagedProcessWithOnSignal interface {
+	OnSignal(signal os.Signal)
 }
 
 // Optional Init stage with timeout
@@ -38,9 +44,6 @@ type ManagedProcessWithCleanup interface {
 }
 
 var (
-	// Error if running in loop mode without ManagedProcessWithRunTimeout implemented
-	ErrTimeoutRequired = fmt.Errorf("mproc: timeout must be specified")
-
 	// Default signals to intercept
 	signals = []os.Signal{syscall.SIGINT, syscall.SIGTERM}
 
@@ -83,17 +86,11 @@ func Run(impl ManagedProcess) error {
 }
 
 // RunWorker manages looped execution of a process
-func RunWorker(impl ManagedProcess) error {
+func RunWorker(impl ManagedWorkerProcess) error {
 	// Main context to receive OS signals
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go catchSignals(cancel, impl)
-
-	// Ensure timeout interface is available
-	implWithTimeout, ok := impl.(ManagedProcessWithRunTimeout)
-	if !ok {
-		return ErrTimeoutRequired
-	}
 
 	// Run init if configured
 	if err := procInit(ctx, impl); err != nil {
@@ -106,7 +103,7 @@ LOOP: // Labelled loop to allow break inside select
 	for {
 		// Create inner loop context so that current loop completes on interrupt
 		// (cancel not deferred as it is probably a memory leak in a loop, and is immediately called anyway)
-		loopCtx, cancelLoop := context.WithTimeout(context.Background(), implWithTimeout.GetRunTimeout())
+		loopCtx, cancelLoop := context.WithTimeout(context.Background(), impl.GetRunTimeout())
 
 		// Run managed process loop
 		loopErr = impl.Run(loopCtx)
