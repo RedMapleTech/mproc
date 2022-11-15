@@ -1,6 +1,8 @@
 # Golang Managed Process Wrapper (mproc)
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/redmapletech/mproc.svg)](https://pkg.go.dev/github.com/redmapletech/mproc)
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/redmapletech/mproc)
+[![Go Report Card](https://goreportcard.com/badge/github.com/redmapletech/mproc)](https://goreportcard.com/report/github.com/redmapletech/mproc)
 
 This is a simple, dependency-free process wrapper to handle OS signals during process init, run (including looped), and cleanup stages.
 
