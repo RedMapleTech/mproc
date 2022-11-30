@@ -37,6 +37,32 @@ func (p *MyProcess) Run(ctx context.Context) error {
 
 See [examples](./example) for minimal, full, and looped versions.
 
+### With http.Server
+
+Golang's http.Server has a blocking ListenAndServe method, but can be gracefully shutdown within a context using its Shutdown method.
+
+This works by pausing the Run method until the context is cancelled, whilst running ListenAndServe in its own goroutine.
+
+```go
+func (p *MyProcess) Run(ctx context.Context) error {
+	// Run ListenAndServe in a goroutine (p.server is *http.Server)
+	go func() {
+		if err := p.server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalln(err)
+		}
+	}()
+
+	// Block on Run context
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (p *MyProcess) Cleanup(ctx context.Context) error {
+	// This will cause ListenAndServe to return
+	return s.server.Shutdown(ctx)
+}
+```
+
 ## Timeout
 
 The context provided to Run can also enforce a deadline if the ManagedProcessWithRunTimeout interface is implemented.
@@ -70,3 +96,5 @@ In this mode, the ManagedProcessWithRunTimeout interface is not optional.
 
 The only difference here is that the Run() function context will only cancel due to the timeout, not in response to a signal.
 Therefore the behaviour will be such that on a signal, the current loop will complete, and then Cleanup will be called if implemented.
+
+Should the code inside the loop wish to signal completion, returning context.Cancelled instead of nil from Run will trigger Cleanup and exit.
